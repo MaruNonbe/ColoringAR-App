@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>塗り絵AR（空に表示・WebXR + Three.js）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "游ゴシック", sans-serif;
+      background: #000;
+    }
+
+    #xr-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+
+    /* 上部UI（ファイル選択＋プレビュー） */
+    #ui-panel {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.94);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    #ui-title {
+      margin: 0 0 4px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    #ui-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    .btn-label {
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #455a64;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: none;
+      background: #00796b;
+      color: #fff;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn:disabled {
+      background: #b0bec5;
+      cursor: not-allowed;
+    }
+
+    #preview {
+      margin-top: 6px;
+      width: 100%;
+      max-height: 140px;
+      object-fit: contain;
+      border-radius: 6px;
+      background: #eceff1;
+    }
+
+    #hint {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #455a64;
+    }
+
+    /* AR開始後はUIを少し透けさせる */
+    .ar-running #ui-panel {
+      background: rgba(255,255,255,0.75);
+    }
+  </style>
+</head>
+<body>
+  <!-- 上部UI -->
+  <div id="ui-panel">
+    <p id="ui-title">塗り絵AR（空に表示）</p>
+    <div id="ui-controls">
+      <!-- 塗り絵写真の選択 -->
+      <label class="btn-label">
+        塗り絵の写真を選ぶ
+        <input id="file-input" type="file" accept="image/*" />
+      </label>
+
+      <!-- AR開始ボタン -->
+      <button id="ar-start" class="btn" disabled>ARを開始</button>
+    </div>
+
+    <img id="preview" alt="塗り絵プレビュー" />
+
+    <div id="hint">
+      ① 塗り絵を撮影してスマホに保存<br>
+      ② 写真を選択 → プレビューを確認<br>
+      ③ 「ARを開始」で、空中に塗り絵が浮かびます
+    </div>
+  </div>
+
+  <!-- WebGL / WebXR 用キャンバス -->
+  <canvas id="xr-canvas"></canvas>
+
+  <!-- Three.js（本体） -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
+  <!-- WebXR用のヘルパー（あれば） -->
+  <!-- <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/webxr/ARButton.js"></script> -->
+
+  <!-- メインスクリプト -->
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
