@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>塗り絵AR（空に表示・WebXR + Three.js）</title>
+  <title>塗り絵AR（疑似AR・WebXRなし）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
 
   <style>
@@ -16,20 +16,27 @@
       background: #000;
     }
 
-    #xr-canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-      touch-action: none;
+    /* カメラ映像 */
+    #camera-container {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 1;
     }
 
-    /* 上部UI（ファイル選択＋プレビュー） */
+    #camera {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* 上部UI */
     #ui-panel {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
-      z-index: 10;
+      z-index: 3;
       padding: 8px 12px;
       background: rgba(255,255,255,0.94);
       box-shadow: 0 2px 6px rgba(0,0,0,0.3);
@@ -93,16 +100,70 @@
       color: #455a64;
     }
 
-    /* AR開始後はUIを少し透けさせる */
-    .ar-running #ui-panel {
-      background: rgba(255,255,255,0.75);
+    /* 塗り絵画像（AR表示） */
+    #ar-image {
+      position: fixed;
+      z-index: 2;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      max-width: 60%;
+      max-height: 60%;
+      border-radius: 8px;
+      box-shadow: 0 0 16px rgba(0,0,0,0.5);
+      touch-action: none; /* ドラッグ用 */
+      display: none;      /* 画像選択までは非表示 */
+    }
+
+    /* 位置調整ボタン */
+    #move-panel {
+      position: fixed;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 3;
+      background: rgba(0,0,0,0.4);
+      padding: 6px 8px;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    #move-panel.hidden {
+      display: none;
+    }
+
+    .move-row {
+      display: flex;
+      gap: 4px;
+    }
+
+    .move-btn {
+      width: 40px;
+      height: 32px;
+      border-radius: 6px;
+      border: none;
+      background: rgba(255,255,255,0.9);
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .move-btn:active {
+      background: #cfd8dc;
     }
   </style>
 </head>
 <body>
+  <!-- カメラ映像 -->
+  <div id="camera-container">
+    <video id="camera" autoplay playsinline muted></video>
+  </div>
+
   <!-- 上部UI -->
   <div id="ui-panel">
-    <p id="ui-title">塗り絵AR（空に表示）</p>
+    <p id="ui-title">塗り絵AR（疑似AR・カメラ＋オーバーレイ）</p>
     <div id="ui-controls">
       <!-- 塗り絵写真の選択 -->
       <label class="btn-label">
@@ -111,27 +172,180 @@
       </label>
 
       <!-- AR開始ボタン -->
-      <button id="ar-start" class="btn" disabled>ARを開始</button>
+      <button id="ar-start" class="btn" disabled>AR開始</button>
     </div>
 
     <img id="preview" alt="塗り絵プレビュー" />
 
     <div id="hint">
       ① 塗り絵を撮影してスマホに保存<br>
-      ② 写真を選択 → プレビューを確認<br>
-      ③ 「ARを開始」で、空中に塗り絵が浮かびます
+      ② 写真を選択 → プレビュー確認<br>
+      ③ 「AR開始」でカメラON ＋ 塗り絵が空中に表示されます
     </div>
   </div>
 
-  <!-- WebGL / WebXR 用キャンバス -->
-  <canvas id="xr-canvas"></canvas>
+  <!-- AR表示用の塗り絵画像 -->
+  <img id="ar-image" alt="AR塗り絵" />
 
-  <!-- Three.js（本体） -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
-  <!-- WebXR用のヘルパー（あれば） -->
-  <!-- <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/webxr/ARButton.js"></script> -->
+  <!-- 位置・大きさ調整ボタン -->
+  <div id="move-panel" class="hidden">
+    <div class="move-row">
+      <button class="move-btn" data-action="up">↑</button>
+    </div>
+    <div class="move-row">
+      <button class="move-btn" data-action="left">←</button>
+      <button class="move-btn" data-action="down">↓</button>
+      <button class="move-btn" data-action="right">→</button>
+    </div>
+    <div class="move-row">
+      <button class="move-btn" data-action="smaller">－</button>
+      <button class="move-btn" data-action="bigger">＋</button>
+    </div>
+  </div>
 
-  <!-- メインスクリプト -->
-  <script type="module" src="./main.js"></script>
+  <script>
+    const fileInput  = document.getElementById('file-input');
+    const preview    = document.getElementById('preview');
+    const arStartBtn = document.getElementById('ar-start');
+    const cameraVideo= document.getElementById('camera');
+    const arImage    = document.getElementById('ar-image');
+    const movePanel  = document.getElementById('move-panel');
+
+    let cameraStream = null;
+    let imageLoaded  = false;
+
+    // --- 1) 塗り絵画像を選択 ---
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+      arImage.src = url;
+      arImage.style.display = 'block'; // AR用画像も表示（カメラ開始前は背景が白）
+
+      imageLoaded = true;
+      arStartBtn.disabled = false;
+    });
+
+    // --- 2) カメラを開始して疑似ARモードへ ---
+    arStartBtn.addEventListener('click', async () => {
+      if (!imageLoaded) {
+        alert('先に塗り絵の写真を選択してください。');
+        return;
+      }
+
+      try {
+        // 背面カメラを要求
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false
+        });
+
+        cameraVideo.srcObject = cameraStream;
+
+        // カメラ映像の上に塗り絵を重ねる
+        arImage.style.display = 'block';
+        movePanel.classList.remove('hidden');
+      } catch (err) {
+        console.error(err);
+        alert('カメラの起動に失敗しました: ' + err.message);
+      }
+    });
+
+    // --- 3) 位置・サイズ調整ボタン ---
+    const moveStep = 10;     // px単位での移動量
+    let scale = 1.0;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    function updateArImageTransform() {
+      arImage.style.transform =
+        `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px)) scale(${scale})`;
+    }
+
+    movePanel.addEventListener('click', (e) => {
+      const btn = e.target.closest('.move-btn');
+      if (!btn) return;
+
+      const action = btn.dataset.action;
+      switch (action) {
+        case 'up':
+          offsetY -= moveStep;
+          break;
+        case 'down':
+          offsetY += moveStep;
+          break;
+        case 'left':
+          offsetX -= moveStep;
+          break;
+        case 'right':
+          offsetX += moveStep;
+          break;
+        case 'bigger':
+          scale = Math.min(scale + 0.1, 3.0);
+          break;
+        case 'smaller':
+          scale = Math.max(scale - 0.1, 0.3);
+          break;
+      }
+      updateArImageTransform();
+    });
+
+    // --- 4) ドラッグで位置調整（指で直接動かせるように） ---
+    let dragging = false;
+    let startX = 0, startY = 0;
+    let startOffsetX = 0, startOffsetY = 0;
+
+    function beginDrag(clientX, clientY) {
+      dragging = true;
+      startX = clientX;
+      startY = clientY;
+      startOffsetX = offsetX;
+      startOffsetY = offsetY;
+    }
+
+    function doDrag(clientX, clientY) {
+      if (!dragging) return;
+      const dx = clientX - startX;
+      const dy = clientY - startY;
+      offsetX = startOffsetX + dx;
+      offsetY = startOffsetY + dy;
+      updateArImageTransform();
+    }
+
+    function endDrag() {
+      dragging = false;
+    }
+
+    arImage.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      beginDrag(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (dragging) {
+        e.preventDefault();
+        doDrag(e.clientX, e.clientY);
+      }
+    });
+
+    window.addEventListener('mouseup', endDrag);
+
+    arImage.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      beginDrag(t.clientX, t.clientY);
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!dragging || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      doDrag(t.clientX, t.clientY);
+    }, { passive: false });
+
+    window.addEventListener('touchend', endDrag);
+    window.addEventListener('touchcancel', endDrag);
+  </script>
 </body>
 </html>
