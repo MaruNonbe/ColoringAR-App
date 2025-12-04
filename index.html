@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>塗り絵AR（疑似AR・WebXRなし）</title>
+  <title>塗り絵AR（疑似AR・カメラ＋オーバーレイ）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
 
   <style>
@@ -14,9 +14,81 @@
       overflow: hidden;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "游ゴシック", sans-serif;
       background: #000;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
-    /* カメラ映像 */
+    /* ▼ スプラッシュ画面 */
+    #splash {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: radial-gradient(circle at top, #4dd0e1 0%, #004d60 50%, #000 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+
+    #splash-inner {
+      text-align: center;
+      padding: 24px 20px;
+      max-width: 320px;
+      border-radius: 16px;
+      background: rgba(0,0,0,0.45);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    }
+
+    .splash-title {
+      margin: 0 0 6px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .splash-sub {
+      margin: 0 0 10px;
+      font-size: 13px;
+      opacity: 0.9;
+    }
+
+    .splash-desc {
+      margin: 0 0 16px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    #splash-start {
+      padding: 8px 18px;
+      border-radius: 999px;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      background: #ffb300;
+      color: #263238;
+      font-weight: 600;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+    }
+
+    #splash-start:active {
+      transform: translateY(1px);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+    }
+
+    .splash-copy {
+      margin: 10px 0 0;
+      font-size: 11px;
+      opacity: 0.9;
+    }
+
+    /* フェードアウト */
+    #splash.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.6s ease;
+    }
+
+    /* ▼ カメラ映像 */
     #camera-container {
       position: fixed;
       inset: 0;
@@ -30,7 +102,7 @@
       object-fit: cover;
     }
 
-    /* 上部UI */
+    /* ▼ 上部UI */
     #ui-panel {
       position: fixed;
       top: 0;
@@ -100,39 +172,52 @@
       color: #455a64;
     }
 
-    /* 塗り絵画像（AR表示） */
-    #ar-image {
+    /* ▼ AR画像レイヤー */
+    #ar-layer {
       position: fixed;
+      inset: 0;
       z-index: 2;
+      pointer-events: none;
+    }
+
+    .ar-image {
+      position: absolute;
       top: 50%;
       left: 50%;
-      transform: translate(-50%, -50%);
       max-width: 60%;
       max-height: 60%;
       border-radius: 8px;
       box-shadow: 0 0 16px rgba(0,0,0,0.5);
-      touch-action: none; /* ドラッグ用 */
-      display: none;      /* 画像選択までは非表示 */
+      filter:
+        drop-shadow(0 0 10px rgba(255,255,255,0.8))
+        drop-shadow(0 0 20px rgba(0,0,0,0.5));
+      touch-action: none;
+      pointer-events: auto;
+      transform: translate(-50%, -50%);
+      cursor: grab;
     }
 
-    /* 位置調整ボタン */
+    .ar-image.selected {
+      outline: 3px solid #ff9800;
+      box-shadow:
+        0 0 20px rgba(255,193,7,0.9),
+        0 0 30px rgba(0,0,0,0.7);
+    }
+
+    /* ▼ 位置調整＆回転ボタン */
     #move-panel {
       position: fixed;
       bottom: 8px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 3;
-      background: rgba(0,0,0,0.4);
+      background: rgba(0,0,0,0.45);
       padding: 6px 8px;
       border-radius: 12px;
-      display: flex;
+      display: none;
       flex-direction: column;
       align-items: center;
       gap: 4px;
-    }
-
-    #move-panel.hidden {
-      display: none;
     }
 
     .move-row {
@@ -153,42 +238,104 @@
     .move-btn:active {
       background: #cfd8dc;
     }
+
+    /* ▼ UI表示/非表示トグル */
+    #ui-toggle {
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      z-index: 4;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0,0,0,0.55);
+      color: #fff;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    body.ui-hidden #ui-panel,
+    body.ui-hidden #move-panel {
+      display: none !important;
+    }
+
+    /* ▼ フッター（デモ版 & Copyright） */
+    #footer {
+      position: fixed;
+      bottom: 4px;
+      left: 6px;
+      z-index: 4;
+      font-size: 10px;
+      color: rgba(255,255,255,0.9);
+      text-shadow: 0 0 4px rgba(0,0,0,0.7);
+      pointer-events: none;
+    }
+
+    /* ▼ 体験終了 → アンケート */
+    #end-experience {
+      position: fixed;
+      bottom: 60px;
+      right: 10px;
+      z-index: 5;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: none;
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      font-size: 12px;
+      cursor: pointer;
+      display: none;
+    }
   </style>
 </head>
 <body>
+  <!-- ▼ スプラッシュ画面 -->
+  <div id="splash">
+    <div id="splash-inner">
+      <h1 class="splash-title">塗り絵AR デモ</h1>
+      <p class="splash-sub">〜 Coloring to Floating AR 〜</p>
+      <p class="splash-desc">
+        塗り絵を撮影して、空に浮かべてみよう。<br>
+        利用開始から7日間だけ使えるデモ版です。
+      </p>
+      <button id="splash-start">体験をはじめる</button>
+      <p class="splash-copy">© 2025 Freedom Inc.</p>
+    </div>
+  </div>
+
   <!-- カメラ映像 -->
   <div id="camera-container">
     <video id="camera" autoplay playsinline muted></video>
   </div>
 
+  <!-- AR画像レイヤー -->
+  <div id="ar-layer"></div>
+
   <!-- 上部UI -->
   <div id="ui-panel">
     <p id="ui-title">塗り絵AR（疑似AR・カメラ＋オーバーレイ）</p>
     <div id="ui-controls">
-      <!-- 塗り絵写真の選択 -->
       <label class="btn-label">
-        塗り絵の写真を選ぶ
+        塗り絵の写真を追加
         <input id="file-input" type="file" accept="image/*" />
       </label>
 
-      <!-- AR開始ボタン -->
       <button id="ar-start" class="btn" disabled>AR開始</button>
     </div>
 
     <img id="preview" alt="塗り絵プレビュー" />
 
     <div id="hint">
-      ① 塗り絵を撮影してスマホに保存<br>
-      ② 写真を選択 → プレビュー確認<br>
-      ③ 「AR開始」でカメラON ＋ 塗り絵が空中に表示されます
+      ① 塗り絵を撮影してスマホに保存（何枚でもOK）<br>
+      ② 写真を選択すると空中に追加されます（タップで選択）<br>
+      ③ 「AR開始」でカメラON＋空中に浮かびます<br>
+      ※ このアプリはデモ版（利用開始から7日間のみ使用可能）です。
     </div>
   </div>
 
-  <!-- AR表示用の塗り絵画像 -->
-  <img id="ar-image" alt="AR塗り絵" />
-
-  <!-- 位置・大きさ調整ボタン -->
-  <div id="move-panel" class="hidden">
+  <!-- 調整ボタン -->
+  <div id="move-panel">
     <div class="move-row">
       <button class="move-btn" data-action="up">↑</button>
     </div>
@@ -201,151 +348,300 @@
       <button class="move-btn" data-action="smaller">－</button>
       <button class="move-btn" data-action="bigger">＋</button>
     </div>
+    <div class="move-row">
+      <button class="move-btn" data-action="rotLeft">↺</button>
+      <button class="move-btn" data-action="rotRight">↻</button>
+    </div>
   </div>
 
+  <!-- UI表示トグル -->
+  <button id="ui-toggle">UI✕</button>
+
+  <!-- フッター -->
+  <div id="footer">デモ版　© 2025 Freedom Inc.</div>
+
+  <!-- 体験終了ボタン -->
+  <button id="end-experience">体験を終了</button>
+
   <script>
-    const fileInput  = document.getElementById('file-input');
-    const preview    = document.getElementById('preview');
-    const arStartBtn = document.getElementById('ar-start');
-    const cameraVideo= document.getElementById('camera');
-    const arImage    = document.getElementById('ar-image');
-    const movePanel  = document.getElementById('move-panel');
+    /* ▼ Googleフォーム（回答者用URL：短い方） */
+    const GOOGLE_FORM_URL =
+      "https://docs.google.com/forms/d/e/1FAIpQLSe6Hv-guh6VWE8_zh2w4bQD9w5bordlezwkhH4xL3ol-p_WbA/viewform";
+
+    const splash      = document.getElementById('splash');
+    const splashStart = document.getElementById('splash-start');
+
+    const fileInput   = document.getElementById('file-input');
+    const preview     = document.getElementById('preview');
+    const arStartBtn  = document.getElementById('ar-start');
+    const cameraVideo = document.getElementById('camera');
+    const arLayer     = document.getElementById('ar-layer');
+    const movePanel   = document.getElementById('move-panel');
+    const uiToggleBtn = document.getElementById('ui-toggle');
+    const endBtn      = document.getElementById('end-experience');
+    const hintEl      = document.getElementById('hint');
 
     let cameraStream = null;
-    let imageLoaded  = false;
+    let hasAnyImage  = false;
 
-    // --- 1) 塗り絵画像を選択 ---
-    fileInput.addEventListener('change', (e) => {
+    /* ▼ スプラッシュ：開始ボタンでフェードアウト */
+    if (splash && splashStart) {
+      splashStart.addEventListener('click', () => {
+        splash.classList.add('hidden');
+        setTimeout(() => {
+          splash.style.display = 'none';
+        }, 700);
+      });
+    }
+
+    /* ▼ デモ版：7日間制限（localStorage） */
+    const DEMO_KEY = "coloringAR_demo_first_use_2025";
+    const now = Date.now();
+    let first = localStorage.getItem(DEMO_KEY);
+    if (!first) {
+      localStorage.setItem(DEMO_KEY, String(now));
+      first = now;
+    }
+    const elapsedDays = (now - Number(first)) / (1000 * 60 * 60 * 24);
+    let demoExpired = elapsedDays >= 7;
+
+    if (demoExpired) {
+      arStartBtn.disabled = true;
+      arStartBtn.textContent = "利用期間終了";
+      if (hintEl) {
+        hintEl.textContent =
+          "このデモ版の利用期間（7日間）は終了しました。アンケートにご協力ください。";
+      }
+    }
+
+    /* ▼ AR画像管理 */
+    let currentImage = null;
+    const stateMap = new Map();
+
+    function getState(el) {
+      if (!stateMap.has(el)) {
+        stateMap.set(el, {
+          offsetX: 0,
+          offsetY: 0,
+          scale: 1,
+          rotationDeg: 0,
+          floatPhase: Math.random() * Math.PI * 2,
+          floatOffset: 0
+        });
+      }
+      return stateMap.get(el);
+    }
+
+    function updateTransform(el) {
+      const s = getState(el);
+      const y = s.offsetY + s.floatOffset;
+      el.style.transform =
+        `translate(calc(-50% + ${s.offsetX}px), calc(-50% + ${y}px)) ` +
+        `scale(${s.scale}) rotate(${s.rotationDeg}deg)`;
+    }
+
+    function selectImage(el) {
+      currentImage = el;
+      document.querySelectorAll(".ar-image")
+        .forEach(img => img.classList.remove("selected"));
+      if (el) el.classList.add("selected");
+    }
+
+    /* ▼ 画像追加 */
+    fileInput.addEventListener("change", e => {
       const file = e.target.files[0];
       if (!file) return;
 
       const url = URL.createObjectURL(file);
       preview.src = url;
-      arImage.src = url;
-      arImage.style.display = 'block'; // AR用画像も表示（カメラ開始前は背景が白）
 
-      imageLoaded = true;
-      arStartBtn.disabled = false;
+      const img = document.createElement("img");
+      img.className = "ar-image";
+      img.src = url;
+
+      arLayer.appendChild(img);
+
+      getState(img); // 初期化
+      updateTransform(img);
+
+      setupImageInteraction(img);
+      selectImage(img);
+
+      hasAnyImage = true;
+      if (!demoExpired) {
+        arStartBtn.disabled = false;
+      }
     });
 
-    // --- 2) カメラを開始して疑似ARモードへ ---
-    arStartBtn.addEventListener('click', async () => {
-      if (!imageLoaded) {
-        alert('先に塗り絵の写真を選択してください。');
+    /* ▼ AR開始（カメラON） */
+    arStartBtn.addEventListener("click", async () => {
+      if (demoExpired) {
+        alert("このデモ版の利用期間（7日間）は終了しました。");
+        return;
+      }
+      if (!hasAnyImage) {
+        alert("先に塗り絵の写真を追加してください。");
         return;
       }
 
       try {
-        // 背面カメラを要求
         cameraStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
+          video: { facingMode: { ideal: "environment" } },
           audio: false
         });
 
         cameraVideo.srcObject = cameraStream;
 
-        // カメラ映像の上に塗り絵を重ねる
-        arImage.style.display = 'block';
-        movePanel.classList.remove('hidden');
+        movePanel.style.display = "flex";
+        endBtn.style.display = "block";
+
       } catch (err) {
         console.error(err);
-        alert('カメラの起動に失敗しました: ' + err.message);
+        alert("カメラの起動に失敗しました: " + err.message);
       }
     });
 
-    // --- 3) 位置・サイズ調整ボタン ---
-    const moveStep = 10;     // px単位での移動量
-    let scale = 1.0;
-    let offsetX = 0;
-    let offsetY = 0;
+    /* ▼ 体験終了 → Googleフォーム */
+    endBtn.addEventListener("click", () => {
+      const ok = confirm(
+        "体験ありがとうございました。\nよろしければアンケートにご協力いただけますか？"
+      );
+      if (ok) {
+        window.open(GOOGLE_FORM_URL, "_blank");
+      }
+    });
 
-    function updateArImageTransform() {
-      arImage.style.transform =
-        `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px)) scale(${scale})`;
+    /* ▼ 移動・拡大縮小・回転（ボタン） */
+    function withCurrent(fn) {
+      if (!currentImage) return;
+      fn(getState(currentImage));
+      updateTransform(currentImage);
     }
 
-    movePanel.addEventListener('click', (e) => {
-      const btn = e.target.closest('.move-btn');
+    const moveStep = 10;
+    const rotStep  = 5;
+
+    movePanel.addEventListener("click", e => {
+      const btn = e.target.closest(".move-btn");
       if (!btn) return;
 
-      const action = btn.dataset.action;
-      switch (action) {
-        case 'up':
-          offsetY -= moveStep;
-          break;
-        case 'down':
-          offsetY += moveStep;
-          break;
-        case 'left':
-          offsetX -= moveStep;
-          break;
-        case 'right':
-          offsetX += moveStep;
-          break;
-        case 'bigger':
-          scale = Math.min(scale + 0.1, 3.0);
-          break;
-        case 'smaller':
-          scale = Math.max(scale - 0.1, 0.3);
-          break;
-      }
-      updateArImageTransform();
+      withCurrent(s => {
+        switch (btn.dataset.action) {
+          case "up":      s.offsetY -= moveStep; break;
+          case "down":    s.offsetY += moveStep; break;
+          case "left":    s.offsetX -= moveStep; break;
+          case "right":   s.offsetX += moveStep; break;
+          case "bigger":  s.scale = Math.min(3, s.scale + 0.1); break;
+          case "smaller": s.scale = Math.max(0.3, s.scale - 0.1); break;
+          case "rotLeft": s.rotationDeg -= rotStep; break;
+          case "rotRight":s.rotationDeg += rotStep; break;
+        }
+      });
     });
 
-    // --- 4) ドラッグで位置調整（指で直接動かせるように） ---
-    let dragging = false;
-    let startX = 0, startY = 0;
-    let startOffsetX = 0, startOffsetY = 0;
+    /* ▼ ドラッグ＆ピンチ操作 */
+    let gesture = null;
+    let startX, startY;
+    let startOX, startOY;
+    let pinchStartDist, pinchStartScale;
 
-    function beginDrag(clientX, clientY) {
-      dragging = true;
-      startX = clientX;
-      startY = clientY;
-      startOffsetX = offsetX;
-      startOffsetY = offsetY;
+    function setupImageInteraction(img) {
+      img.addEventListener("mousedown", e => {
+        selectImage(img);
+        gesture = "drag";
+        startX = e.clientX;
+        startY = e.clientY;
+        const s = getState(img);
+        startOX = s.offsetX;
+        startOY = s.offsetY;
+      });
+
+      img.addEventListener("touchstart", e => {
+        selectImage(img);
+        if (e.touches.length === 1) {
+          gesture = "drag";
+          const t = e.touches[0];
+          startX = t.clientX;
+          startY = t.clientY;
+          const s = getState(img);
+          startOX = s.offsetX;
+          startOY = s.offsetY;
+        } else if (e.touches.length === 2) {
+          gesture = "pinch";
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          pinchStartDist = Math.hypot(
+            t2.clientX - t1.clientX,
+            t2.clientY - t1.clientY
+          );
+          pinchStartScale = getState(img).scale;
+        }
+      }, { passive: false });
     }
 
-    function doDrag(clientX, clientY) {
-      if (!dragging) return;
-      const dx = clientX - startX;
-      const dy = clientY - startY;
-      offsetX = startOffsetX + dx;
-      offsetY = startOffsetY + dy;
-      updateArImageTransform();
-    }
-
-    function endDrag() {
-      dragging = false;
-    }
-
-    arImage.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      beginDrag(e.clientX, e.clientY);
+    window.addEventListener("mousemove", e => {
+      if (gesture !== "drag" || !currentImage) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const s = getState(currentImage);
+      s.offsetX = startOX + dx;
+      s.offsetY = startOY + dy;
+      updateTransform(currentImage);
     });
 
-    window.addEventListener('mousemove', (e) => {
-      if (dragging) {
+    window.addEventListener("mouseup", () => {
+      gesture = null;
+    });
+
+    window.addEventListener("touchmove", e => {
+      if (!currentImage) return;
+
+      if (gesture === "drag" && e.touches.length === 1) {
         e.preventDefault();
-        doDrag(e.clientX, e.clientY);
+        const t = e.touches[0];
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        const s = getState(currentImage);
+        s.offsetX = startOX + dx;
+        s.offsetY = startOY + dy;
+        updateTransform(currentImage);
+      } else if (gesture === "pinch" && e.touches.length === 2) {
+        e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(
+          t2.clientX - t1.clientX,
+          t2.clientY - t1.clientY
+        );
+        const ratio = dist / pinchStartDist;
+        const s = getState(currentImage);
+        s.scale = Math.max(0.3, Math.min(3, pinchStartScale * ratio));
+        updateTransform(currentImage);
       }
+    }, { passive: false });
+
+    window.addEventListener("touchend", () => {
+      gesture = null;
     });
 
-    window.addEventListener('mouseup', endDrag);
+    /* ▼ 浮遊アニメーション */
+    function floatLoop() {
+      const t = performance.now() / 1000;
+      for (const [el, s] of stateMap.entries()) {
+        s.floatOffset = Math.sin(t * 0.8 + s.floatPhase) * 8;
+        updateTransform(el);
+      }
+      requestAnimationFrame(floatLoop);
+    }
+    floatLoop();
 
-    arImage.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
-      beginDrag(t.clientX, t.clientY);
-    }, { passive: false });
-
-    window.addEventListener('touchmove', (e) => {
-      if (!dragging || e.touches.length !== 1) return;
-      const t = e.touches[0];
-      doDrag(t.clientX, t.clientY);
-    }, { passive: false });
-
-    window.addEventListener('touchend', endDrag);
-    window.addEventListener('touchcancel', endDrag);
+    /* ▼ UI表示切替 */
+    let uiVisible = true;
+    uiToggleBtn.addEventListener("click", () => {
+      uiVisible = !uiVisible;
+      document.body.classList.toggle("ui-hidden", !uiVisible);
+      uiToggleBtn.textContent = uiVisible ? "UI✕" : "UI◎";
+    });
   </script>
 </body>
 </html>
