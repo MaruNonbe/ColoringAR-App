@@ -502,14 +502,20 @@
     });
 
     /* ▼ 体験終了 → Googleフォーム */
-    endBtn.addEventListener("click", () => {
-      const ok = confirm(
-        "体験ありがとうございました。\nよろしければアンケートにご協力いただけますか？"
-      );
-      if (ok) {
-        window.open(GOOGLE_FORM_URL, "_blank");
-      }
-    });
+endBtn.addEventListener("click", () => {
+  const ok = confirm(
+    "体験ありがとうございました。\nよろしければアンケートにご協力いただけますか？"
+  );
+  if (!ok) return;
+
+  // カメラを止めてから画面遷移
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+  }
+
+  // 同じタブでアンケートページへ移動（iOSでも確実）
+  window.location.href = GOOGLE_FORM_URL;
+});
 
     /* ▼ 移動・拡大縮小・回転（ボタン） */
     function withCurrent(fn) {
